@@ -40,131 +40,52 @@ struct future {
   struct future_fulfil fulfil;
 };
 
-
-// uint64_t future_created[uintptr_t];
-
 struct future futures[uintptr_t];
 
+int number_of_messages_sent;
+int number_of_futures;
+
 pony$target:::actor-alloc {
-	#if defined(DOPRINT) && DOPRINT > 0
+	#if defined(DOPRINT) && DOPRINT == 1
     printf("Actor alloc on scheduler %d (cpu: %d)\n", arg0, cpu);
   #endif
 }
 
 pony$target:::actor-msg-send {
-  @counter["Number of messages"] = count();
-}
-
-pony$target:::actor-msg-send /arg1 == ACTORMSG_BLOCK/ {
-  #if defined(DOPRINT) && DOPRINT > 0
-    printf("BLOCK msg sent on scheduler %d\n", arg0);
-  #endif
-}
-
-pony$target:::actor-msg-send /arg1 == ACTORMSG_UNBLOCK/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-      printf("UNBLOCK msg sent on scheduler %d\n", arg0);
-    #endif
-}
-
-pony$target:::actor-msg-send /arg1 == ACTORMSG_ACQUIRE/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-      printf("ACQUIRE msg sent on scheduler %d\n", arg0);
-    #endif
-}
-
-pony$target:::actor-msg-send /arg1 == ACTORMSG_RELEASE/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-      printf("RELEASE msg sent on scheduler %d\n", arg0);
-    #endif
-}
-
-pony$target:::actor-msg-send /arg1 == ACTORMSG_CONF/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-	   printf("CONF msg sent on scheduler %d\n", arg0);
-     #endif
-}
-
-pony$target:::actor-msg-send /arg1 == ACTORMSG_ACK/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-	   printf("ACK msg sent on scheduler %d\n", arg0);
-  #endif
-}
-
-pony$target:::actor-msg-run /arg2 == ACTORMSG_BLOCK/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-		  printf("Actor %d received BLOCK msg on scheduler %d\n", arg1, arg0);
-    #endif
-}
-
-pony$target:::actor-msg-run /arg2 == ACTORMSG_UNBLOCK/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-		  printf("Actor %d received UNBLOCK msg on scheduler %d\n", arg1, arg0);
-    #endif
-}
-
-pony$target:::actor-msg-run /arg2 == ACTORMSG_ACQUIRE/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-		  printf("Actor %d received ACQUIRE msg on scheduler %d\n", arg1, arg0);
-    #endif
-}
-
-pony$target:::actor-msg-run /arg2 == ACTORMSG_RELEASE/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-		  printf("Actor %d received RELEASE msg on scheduler %d\n", arg1, arg0);
-    #endif
-}
-
-pony$target:::actor-msg-run /arg2 == ACTORMSG_CONF/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-		  printf("Actor %d received CONF msg on scheduler %d\n", arg1, arg0);
-    #endif
-}
-
-pony$target:::actor-msg-run /arg2 == ACTORMSG_ACK/ {
-    #if defined(DOPRINT) && DOPRINT > 0
-		  printf("Actor %d received ACK msg on scheduler %d\n", arg1, arg0);
-    #endif
+  @[probename] = count();
+  number_of_messages_sent += 1;
 }
 
 encore$target:::future-create {
+  number_of_futures += 1;
   future_created[arg1] = timestamp;
   @counter[probename] = count();
-
-  futures[arg1].created = timestamp;
-  futures[arg1].ptr = arg1;
 }
 
 encore$target:::future-block {
   @counter[probename] = count();
   future_blocked[arg1] = timestamp;
-  futures[arg1].blocking.start = timestamp;
 }
 
 encore$target:::future-unblock {
   @counter[probename] = count();
   @future_blocked_lifetime["Future blocked duration", arg1] = sum(timestamp - future_blocked[arg1]);
-  futures[arg1].blocking.end = timestamp;
 }
 
 encore$target:::future-chaining {
   @counter[probename] = count();
-  futures[arg1].chaining = 1;
 }
 
 encore$target:::future-fulfil-start {
   @counter[probename] = count();
-  futures[arg1].fulfil.start = timestamp;
 }
 
 encore$target:::future-fulfil-end {
   @counter[probename] = count();
-  futures[arg1].fulfil.end = timestamp;
 }
 
 encore$target:::future-get {
   @counter[probename] = count();
-  futures[arg1].get = 1;
 }
 
 encore$target:::future-destroy {
@@ -173,7 +94,7 @@ encore$target:::future-destroy {
 }
 
 encore$target:::method-entry {
-  // printf("\nMETHOD ENTRY: %s\n", copyinstr(arg2));
+  // printf("\nMETHOD ENTRY: %s (%d)\n", copyinstr(arg2), arg2);
   // ctx = (struct pony_ctx_t *)copyin(arg0, sizeof(struct pony_ctx_t));
   // scd = (struct scheduler_t*)copyin((user_addr_t)ctx->scheduler, sizeof(struct scheduler_t));
   // print(*ctx);
@@ -181,9 +102,7 @@ encore$target:::method-entry {
   // printf("\n");
 }
 
-BEGIN {
-
-}
-
 END {
+  ratio = (number_of_futures > 0) ? number_of_messages_sent / number_of_futures : 0;
+  printf("Ratio: %d\n", ratio);
 }
